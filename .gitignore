@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+*.log
+
+# Tauri build output
+src-tauri/target/
+src-tauri/binaries/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.coverage
+.pytest_cache/
+htmlcov/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Input directories
+html-drop/*.html
+html-drop/*.zip
+processing/*.html
+
+# Output directories
+pdf-export/*.pdf
+!pdf-export/.gitkeep
+done-html/*.html
+old/*
+
+# Temporary files
+*.tmp
+*.temp
+*.zip
+
