@@ -14,19 +14,27 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
-HTML_DIR = ROOT / 'html-drop'
-OUT_DIR = ROOT / 'pdf-export'
-PROCESSING_DIR = ROOT / 'processing'
-DONE_DIR = ROOT / 'done-html'
+
+# Base directory for all working folders. Can be overridden with BASE_DIR env var.
+# Defaults to '/var/www/html' to support system-wide deployments.
+DEFAULT_BASE_DIR = Path(os.getenv('BASE_DIR', '/var/www/html'))
+
+# Folder layout computed dynamically from a given base directory
+def _layout(base_dir: Path) -> Tuple[Path, Path, Path, Path]:
+    html_dir = base_dir / 'html-drop'
+    out_dir = base_dir / 'pdf-export'
+    processing_dir = base_dir / 'processing'
+    done_dir = base_dir / 'done-html'
+    return html_dir, out_dir, processing_dir, done_dir
 
 
-def _atomic_acquire_html(src_html_path: Path) -> Optional[Path]:
+def _atomic_acquire_html(src_html_path: Path, processing_dir: Path) -> Optional[Path]:
     """
     Try to atomically move an HTML file from html-drop/ to processing/ to acquire it
     for this worker instance. Returns the new processing path on success, or None if
     the file could not be acquired (e.g., another process acquired it first).
     """
-    processing_path = PROCESSING_DIR / src_html_path.name
+    processing_path = processing_dir / src_html_path.name
     try:
         # os.rename is atomic and will fail on Windows if destination exists
         os.rename(src_html_path, processing_path)
@@ -42,9 +50,9 @@ def _atomic_acquire_html(src_html_path: Path) -> Optional[Path]:
         return None
 
 
-def _finalize_html_after_success(processing_path: Path) -> None:
+def _finalize_html_after_success(processing_path: Path, done_dir: Path) -> None:
     """Move processed HTML from processing/ to done-html/, avoiding duplicates."""
-    destination = DONE_DIR / processing_path.name
+    destination = done_dir / processing_path.name
     try:
         if destination.exists():
             # If already archived as done, remove the processing copy
@@ -63,11 +71,11 @@ def _finalize_html_after_success(processing_path: Path) -> None:
             processing_path.unlink(missing_ok=True)
 
 
-def _requeue_html_after_failure(processing_path: Path) -> None:
+def _requeue_html_after_failure(processing_path: Path, html_dir: Path) -> None:
     """On failure, move HTML back to html-drop/ for retry. Avoid overwriting."""
     if not processing_path.exists():
         return
-    destination = HTML_DIR / processing_path.name
+    destination = html_dir / processing_path.name
     if destination.exists():
         # If original name is taken, append a suffix to retry later
         destination = destination.with_name(destination.stem + "__retry" + destination.suffix)
@@ -76,63 +84,89 @@ def _requeue_html_after_failure(processing_path: Path) -> None:
     except OSError:
         # If rename fails, attempt replace (may overwrite) to avoid stuck files
         try:
-            os.replace(processing_path, HTML_DIR / processing_path.name)
+            os.replace(processing_path, html_dir / processing_path.name)
         except Exception:
             # Give up and leave it in processing for manual intervention
             pass
 
-def main() -> int:
+def run_batch_convert(base_dir: Optional[Path | str] = None) -> dict:
+    """Run the batch conversion process for the given base directory.
+
+    Returns a summary dict with counts.
+    """
     sys.path.insert(0, str(ROOT / 'src-backend'))
     try:
         from converter import HTMLToPDFConverter
     except Exception as e:
-        print(f"ERROR: Failed to import converter: {e}")
-        return 2
+        return {"status": "error", "error": f"Failed to import converter: {e}"}
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    PROCESSING_DIR.mkdir(parents=True, exist_ok=True)
-    DONE_DIR.mkdir(parents=True, exist_ok=True)
-    html_files = sorted([p for p in HTML_DIR.glob('*.html')])
-    if not html_files:
-        print(f"No HTML files found in {HTML_DIR}")
-        return 1
+    if base_dir is None:
+        base_dir = DEFAULT_BASE_DIR
+    else:
+        base_dir = Path(base_dir)
 
+    html_dir, out_dir, processing_dir, done_dir = _layout(base_dir)
+
+    # Ensure required directories exist on first run
+    html_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    processing_dir.mkdir(parents=True, exist_ok=True)
+    done_dir.mkdir(parents=True, exist_ok=True)
+
+    html_files = sorted([p for p in html_dir.glob('*.html')])
     converter = HTMLToPDFConverter()
     successes = 0
     failures = 0
+    skipped_existing = 0
+    acquired = 0
+
     for src_html_path in html_files:
-        # Attempt to acquire this file for processing by atomically renaming it
-        processing_path = _atomic_acquire_html(src_html_path)
+        processing_path = _atomic_acquire_html(src_html_path, processing_dir)
         if processing_path is None:
-            # Could not acquire; another concurrent worker likely took it
             continue
+        acquired += 1
 
-        out_path = OUT_DIR / (processing_path.stem + '.pdf')
-        # If output already exists, skip conversion and archive the HTML
+        out_path = out_dir / (processing_path.stem + '.pdf')
         if out_path.exists():
-            print(f"Already done (PDF exists): {processing_path.name} -> {out_path.name}")
-            _finalize_html_after_success(processing_path)
+            _finalize_html_after_success(processing_path, done_dir)
             successes += 1
+            skipped_existing += 1
             continue
 
-        print(f"Converting: {processing_path.name} -> {out_path.name}")
         try:
             result = converter.convert_file(str(processing_path), str(out_path))
             if result.get('status') == 'success':
                 successes += 1
-                print(f"  OK: {out_path.name} ({result.get('output_size', 0)} bytes)")
-                _finalize_html_after_success(processing_path)
+                _finalize_html_after_success(processing_path, done_dir)
             else:
                 failures += 1
-                print(f"  FAIL: {processing_path.name} - {result.get('error')}")
-                _requeue_html_after_failure(processing_path)
-        except Exception as e:
+                _requeue_html_after_failure(processing_path, html_dir)
+        except Exception:
             failures += 1
-            print(f"  EXCEPTION: {processing_path.name} - {e}")
-            _requeue_html_after_failure(processing_path)
+            _requeue_html_after_failure(processing_path, html_dir)
 
-    print(f"Done. Success: {successes}, Failures: {failures}")
-    return 0 if failures == 0 else 3
+    return {
+        "status": "ok" if failures == 0 else "partial",
+        "base_dir": str(base_dir),
+        "acquired": acquired,
+        "successes": successes,
+        "failures": failures,
+        "skipped_existing": skipped_existing,
+    }
+
+def main() -> int:
+    base_dir = DEFAULT_BASE_DIR
+    summary = run_batch_convert(base_dir)
+    if summary.get("status") == "error":
+        print(summary.get("error"))
+        return 2
+    if summary.get("successes", 0) + summary.get("failures", 0) + summary.get("skipped_existing", 0) == 0:
+        print(f"No HTML files found in {base_dir / 'html-drop'}")
+        return 1
+    print(
+        f"Done. Success: {summary['successes']}, Failures: {summary['failures']}, Skipped existing: {summary['skipped_existing']}"
+    )
+    return 0 if summary.get("failures", 0) == 0 else 3
 
 if __name__ == '__main__':
     raise SystemExit(main())

@@ -1,9 +1,12 @@
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    BASE_DIR=/app \
+    APP_MODE=cli \
+    PORT=8000
 
-# System dependencies required by WeasyPrint (Cairo, Pango, GDK-PixBuf) and Python
+# System dependencies required by WeasyPrint (Cairo, Pango, GDK-PixBuf) and tooling
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -20,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     fonts-liberation \
     fonts-dejavu-core \
     fonts-noto-core \
+    qpdf \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -32,10 +36,15 @@ RUN pip3 install --no-cache-dir -r /app/src-backend/requirements.txt
 COPY scripts/ /app/scripts/
 COPY src-backend/ /app/src-backend/
 
+# Ensure scripts are executable
+RUN chmod +x /app/scripts/*.sh || true
+
 # Prepare working directories for input/output
 RUN mkdir -p /app/html-drop /app/pdf-export /app/processing /app/done-html
 
-# Default command converts any HTMLs present in /app/html-drop into /app/pdf-export
-CMD ["python3", "/app/scripts/batch_convert.py"]
+EXPOSE 8000
+
+# Entrypoint selects between CLI, API, or batch mode
+CMD ["bash", "/app/scripts/entrypoint.sh"]
 
 

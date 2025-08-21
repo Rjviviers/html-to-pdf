@@ -13,16 +13,20 @@ import os
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-HTML_DIR = ROOT / 'html-drop'
-OUT_DIR = ROOT / 'pdf-export'
-PROCESSING_DIR = ROOT / 'processing'
-DONE_DIR = ROOT / 'done-html'
+# Base directory; can be overridden with BASE_DIR env var. Docker sets BASE_DIR=/app.
+DEFAULT_BASE_DIR = Path(os.getenv('BASE_DIR', '/var/www/html'))
+
+def _layout(base_dir: Path) -> tuple[Path, Path, Path, Path]:
+    html_dir = base_dir / 'html-drop'
+    out_dir = base_dir / 'pdf-export'
+    processing_dir = base_dir / 'processing'
+    done_dir = base_dir / 'done-html'
+    return html_dir, out_dir, processing_dir, done_dir
 
 
-def _safe_move_to_done(html_path: Path) -> None:
+def _safe_move_to_done(html_path: Path, done_dir: Path) -> None:
     """Move the given HTML into done-html/ with safe handling of duplicates/errors."""
-    destination = DONE_DIR / html_path.name
+    destination = done_dir / html_path.name
     try:
         if destination.exists():
             # Already archived; remove the source to avoid duplicates
@@ -40,38 +44,48 @@ def _safe_move_to_done(html_path: Path) -> None:
             html_path.unlink(missing_ok=True)
 
 
-def _gather_pdf_stems() -> set[str]:
+def _gather_pdf_stems(out_dir: Path) -> set[str]:
     stems: set[str] = set()
-    if not OUT_DIR.exists():
+    if not out_dir.exists():
         return stems
-    for p in OUT_DIR.glob('*.pdf'):
+    for p in out_dir.glob('*.pdf'):
         stems.add(p.stem)
     return stems
 
 
-def main() -> int:
+def run_sync(base_dir: Path | None = None) -> dict:
+    if base_dir is None:
+        base_dir = DEFAULT_BASE_DIR
+    html_dir, out_dir, processing_dir, done_dir = _layout(base_dir)
+
     # Ensure folder structure exists
-    HTML_DIR.mkdir(parents=True, exist_ok=True)
-    PROCESSING_DIR.mkdir(parents=True, exist_ok=True)
-    DONE_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    html_dir.mkdir(parents=True, exist_ok=True)
+    processing_dir.mkdir(parents=True, exist_ok=True)
+    done_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    pdf_stems = _gather_pdf_stems()
+    pdf_stems = _gather_pdf_stems(out_dir)
 
-    # From processing/ → done-html/ when PDF exists
-    for html_path in sorted(PROCESSING_DIR.glob('*.html')):
+    moved_processing = 0
+    moved_drop = 0
+
+    for html_path in sorted(processing_dir.glob('*.html')):
         if html_path.stem in pdf_stems:
-            print(f"Archiving processed HTML: processing/{html_path.name} → done-html/{html_path.name}")
-            _safe_move_to_done(html_path)
+            _safe_move_to_done(html_path, done_dir)
+            moved_processing += 1
 
-    # From html-drop/ → done-html/ when PDF exists
-    for html_path in sorted(HTML_DIR.glob('*.html')):
+    for html_path in sorted(html_dir.glob('*.html')):
         if html_path.stem in pdf_stems:
-            print(f"Archiving completed HTML: html-drop/{html_path.name} → done-html/{html_path.name}")
-            _safe_move_to_done(html_path)
+            _safe_move_to_done(html_path, done_dir)
+            moved_drop += 1
 
+    return {"status": "ok", "base_dir": str(base_dir), "moved_processing": moved_processing, "moved_drop": moved_drop}
+
+
+def main() -> int:
+    summary = run_sync(DEFAULT_BASE_DIR)
     print("Sync complete.")
-    return 0
+    return 0 if summary.get("status") == "ok" else 1
 
 
 if __name__ == '__main__':
