@@ -19,8 +19,33 @@ DEFAULT_BASE_DIR = Path(os.getenv("BASE_DIR", "/app"))
 
 def prompt(prompt_text: str, default: str | None = None) -> str:
     suffix = f" [{default}]" if default else ""
-    value = input(f"{prompt_text}{suffix}: ").strip()
+    try:
+        value = input(f"{prompt_text}{suffix}: ").strip()
+    except EOFError:
+        # Non-interactive environment: fall back to default or empty string
+        return default or ""
     return value or (default or "")
+
+
+def _resolve_base_dir_from_user_input(user_input: str) -> Path:
+    """Resolve a user-provided path to the intended base directory.
+
+    Accepts either the base directory (containing html-drop, pdf-export, ...)
+    or the html-drop directory itself and normalizes accordingly.
+    """
+    if not user_input:
+        return DEFAULT_BASE_DIR
+    p = Path(user_input)
+    # If they passed the base dir directly
+    if (p / "html-drop").exists():
+        return p
+    # If they passed the html-drop directory
+    if p.name == "html-drop":
+        return p.parent
+    # If the dir looks like it contains HTMLs directly, assume it's html-drop
+    if p.is_dir() and any(p.glob("*.html")):
+        return p.parent
+    return p
 
 
 def run_convert(base_dir: Path) -> None:
@@ -43,7 +68,7 @@ def run_sync(base_dir: Path) -> None:
 
 
 def run_encrypt(dir_path: Path, out_dir: Path | None = None, password: str | None = None) -> None:
-    script = ROOT / "scripts" / "password_protect_pdfs.sh"
+    script = ROOT/"scripts"/"password_protect_pdfs.sh"
     if not script.exists():
         print("Encryption script not found.")
         return
@@ -65,20 +90,35 @@ def main() -> int:
         print("2) Sync folders (archive done HTMLs)")
         print("3) Encrypt PDFs with qpdf")
         print("4) Exit")
-        choice = input("Select an option [1-4]: ").strip()
+        try:
+            choice = input("Select an option [1-4]: ").strip()
+        except EOFError:
+            print("No stdin available; exiting.")
+            return 0
 
         if choice == "1":
-            base = prompt("Base directory", str(DEFAULT_BASE_DIR))
-            run_convert(Path(base))
+            # Always use the html-drop folder for conversion
+            html_folder = DEFAULT_BASE_DIR/"html-drop"
+            base = _resolve_base_dir_from_user_input(str(html_folder))
+            print(f"Using HTML folder: {html_folder}")
+            print(f"Derived base directory: {base}")
+            run_convert(base)
         elif choice == "2":
-            base = prompt("Base directory", str(DEFAULT_BASE_DIR))
-            run_sync(Path(base))
+            base_in = prompt(
+                "Base directory (or html-drop path)", str(DEFAULT_BASE_DIR)
+            )
+            base = _resolve_base_dir_from_user_input(base_in)
+            print(f"Using base directory: {base}")
+            run_sync(base)
         elif choice == "3":
             pdf_dir = prompt("PDF directory", str(DEFAULT_BASE_DIR / "pdf-export"))
             out_dir = prompt(
                 "Output directory for encrypted PDFs", str(Path(pdf_dir) / "encrypted")
             )
-            use_existing = input("Provide password now? [y/N]: ").strip().lower() == "y"
+            try:
+                use_existing = input("Provide password now? [y/N]: ").strip().lower() == "y"
+            except EOFError:
+                use_existing = False
             pwd = None
             if use_existing:
                 pwd = prompt("Password")

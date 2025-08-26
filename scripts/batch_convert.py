@@ -9,6 +9,8 @@ Concurrent-safe:
 - If the PDF already exists, conversion is skipped and the HTML is moved to `done-html/`.
 """
 import os
+import shutil
+import errno
 import sys
 from pathlib import Path
 from typing import Optional, Tuple
@@ -36,7 +38,7 @@ def _atomic_acquire_html(src_html_path: Path, processing_dir: Path) -> Optional[
     """
     processing_path = processing_dir / src_html_path.name
     try:
-        # os.rename is atomic and will fail on Windows if destination exists
+        # os.rename is atomic on same filesystem
         os.rename(src_html_path, processing_path)
         return processing_path
     except FileNotFoundError:
@@ -45,8 +47,15 @@ def _atomic_acquire_html(src_html_path: Path, processing_dir: Path) -> Optional[
     except FileExistsError:
         # Already being processed by another instance
         return None
-    except OSError:
-        # Any other rename issue: skip acquisition
+    except OSError as e:
+        # Cross-device link? Fall back to shutil.move (copy+delete)
+        if getattr(e, 'errno', None) in (errno.EXDEV,):
+            try:
+                shutil.move(str(src_html_path), str(processing_path))
+                return processing_path
+            except Exception:
+                return None
+        # Any other issue: skip acquisition
         return None
 
 
@@ -62,13 +71,23 @@ def _finalize_html_after_success(processing_path: Path, done_dir: Path) -> None:
     except FileNotFoundError:
         # Already moved or removed by someone else
         pass
-    except OSError:
-        # As a fallback, try replace semantics
+    except OSError as e:
+        # Cross-device: fall back to shutil.move; otherwise try replace
+        if getattr(e, 'errno', None) in (errno.EXDEV,):
+            try:
+                shutil.move(str(processing_path), str(destination))
+                return
+            except Exception:
+                processing_path.unlink(missing_ok=True)
+                return
         try:
             os.replace(processing_path, destination)
         except Exception:
-            # Last resort: delete processing copy to avoid clogging the queue
-            processing_path.unlink(missing_ok=True)
+            try:
+                shutil.move(str(processing_path), str(destination))
+            except Exception:
+                # Last resort: delete processing copy to avoid clogging the queue
+                processing_path.unlink(missing_ok=True)
 
 
 def _requeue_html_after_failure(processing_path: Path, html_dir: Path) -> None:
@@ -81,13 +100,22 @@ def _requeue_html_after_failure(processing_path: Path, html_dir: Path) -> None:
         destination = destination.with_name(destination.stem + "__retry" + destination.suffix)
     try:
         os.rename(processing_path, destination)
-    except OSError:
-        # If rename fails, attempt replace (may overwrite) to avoid stuck files
+    except OSError as e:
+        if getattr(e, 'errno', None) in (errno.EXDEV,):
+            try:
+                shutil.move(str(processing_path), str(destination))
+                return
+            except Exception:
+                return
+        # If rename fails, attempt replace, then shutil.move
         try:
             os.replace(processing_path, html_dir / processing_path.name)
         except Exception:
-            # Give up and leave it in processing for manual intervention
-            pass
+            try:
+                shutil.move(str(processing_path), str(html_dir / processing_path.name))
+            except Exception:
+                # Give up and leave it in processing for manual intervention
+                pass
 
 def run_batch_convert(base_dir: Optional[Path | str] = None) -> dict:
     """Run the batch conversion process for the given base directory.
@@ -113,12 +141,34 @@ def run_batch_convert(base_dir: Optional[Path | str] = None) -> dict:
     processing_dir.mkdir(parents=True, exist_ok=True)
     done_dir.mkdir(parents=True, exist_ok=True)
 
-    html_files = sorted([p for p in html_dir.glob('*.html')])
+    # Gather HTML files (case-insensitive, .html and .htm)
+    patterns = ['*.html', '*.htm', '*.HTML', '*.HTM']
+    html_files = []
+    for pat in patterns:
+        html_files.extend([p for p in html_dir.glob(pat)])
+    html_files = sorted({p.resolve() for p in html_files})
     converter = HTMLToPDFConverter()
     successes = 0
     failures = 0
     skipped_existing = 0
     acquired = 0
+
+    if not html_files:
+        # Helpful debug output when nothing is found
+        try:
+            listing = ', '.join(sorted([p.name for p in html_dir.iterdir()]))
+        except Exception:
+            listing = '(unavailable)'
+        return {
+            "status": "ok",
+            "base_dir": str(base_dir),
+            "acquired": 0,
+            "successes": 0,
+            "failures": 0,
+            "skipped_existing": 0,
+            "note": f"No HTML files found in {html_dir}",
+            "html_drop_listing": listing,
+        }
 
     for src_html_path in html_files:
         processing_path = _atomic_acquire_html(src_html_path, processing_dir)

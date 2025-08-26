@@ -1,53 +1,17 @@
-version: "3.8"
-
-x-common: &common
-  build: .
-  env_file:
-    - env.txt
-  environment:
-    # APP_MODE is read by scripts/entrypoint.sh to pick api|batch|cli
-    - APP_MODE=${APP_MODE}
-    - BASE_DIR=${BASE_DIR}
-    - PORT=${PORT}
-    - WORKERS=${WORKERS}
-  volumes:
-    - ./html-drop:/app/html-drop
-    - ./pdf-export:/app/pdf-export
-    - ./processing:/app/processing
-    - ./done-html:/app/done-html
-
 services:
-  batch:
-    <<: *common
-    container_name: html-to-pdf-batch
-    restart: "no"
-    # Default APP_MODE can be overridden via env.txt. For batch, ensure APP_MODE=batch
-    environment:
-      - APP_MODE=batch
-      - BASE_DIR=${BASE_DIR}
-    profiles: [batch]
-
-  api:
-    <<: *common
-    container_name: html-to-pdf-api
-    restart: unless-stopped
-    environment:
-      - APP_MODE=api
-      - BASE_DIR=${BASE_DIR}
-      - PORT=${PORT}
-      - WORKERS=${WORKERS}
-    ports:
-      - "${PORT}:8000"
-    profiles: [api]
-
   cli:
-    <<: *common
+    build: .
     container_name: html-to-pdf-cli
     restart: "no"
     environment:
       - APP_MODE=cli
-      - BASE_DIR=${BASE_DIR}
-    # Use: docker compose run --rm cli
-    profiles: [cli]
+      - BASE_DIR=/app
+    volumes:
+      - ./html-drop:/app/html-drop
+      - ./pdf-export:/app/pdf-export
+      - ./processing:/app/processing
+      - ./done-html:/app/done-html
+    tty: true
+    stdin_open: true
 
 

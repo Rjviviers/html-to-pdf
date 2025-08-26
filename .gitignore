@@ -39,7 +39,8 @@ html-drop/*.zip
 processing/*.html
 
 # Output directories
-pdf-export/*.pdf
+pdf-export/*
+
 !pdf-export/.gitkeep
 done-html/*.html
 old/*
