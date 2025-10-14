@@ -67,23 +67,37 @@ def run_sync(base_dir: Path) -> None:
     )
 
 
-def run_encrypt(dir_path: Path, out_dir: Path | None = None, password: str | None = None) -> None:
+def run_encrypt(dir_path: Path, out_dir: Path | None = None, password: str | None = None) -> int:
     script = ROOT/"scripts"/"password_protect_pdfs.sh"
     if not script.exists():
         print("Encryption script not found.")
-        return
-    cmd = ["bash", str(script), "--dir", str(dir_path)]
+        return 2
+    log_dir = Path(out_dir) if out_dir is not None else (dir_path / "encrypted")
+    log_file = log_dir / "encrypt.log"
+    cmd = ["bash", str(script), "--dir", str(dir_path), "--verbose", "--log-file", str(log_file)]
     if out_dir is not None:
         cmd += ["--out-dir", str(out_dir)]
     if password:
         cmd += ["--password", password]
     try:
         subprocess.check_call(cmd)
+        return 0
     except subprocess.CalledProcessError as e:
-        print(f"Encryption failed with exit code {e.returncode}")
+        print(f"Encryption failed with exit code {e.returncode}. See log: {log_file}")
+        return e.returncode
 
 
 def main() -> int:
+    # Non-interactive auto-encrypt mode via environment variables
+    auto_encrypt_env = os.getenv("AUTO_ENCRYPT", "").strip().lower()
+    cli_action_env = os.getenv("CLI_ACTION", "").strip().lower()
+    auto_encrypt = auto_encrypt_env in {"1", "true", "yes", "y"} or cli_action_env == "encrypt"
+    if auto_encrypt:
+        pdf_dir = DEFAULT_BASE_DIR / "pdf-export"
+        out_dir = pdf_dir / "encrypted"
+        pwd_env = os.getenv("ENCRYPT_PASSWORD")
+        return run_encrypt(pdf_dir, out_dir, pwd_env)
+
     while True:
         print("\nHTML→PDF Console")
         print("1) Convert HTMLs to PDFs")

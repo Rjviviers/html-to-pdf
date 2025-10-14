@@ -3,14 +3,18 @@ services:
     build: .
     container_name: html-to-pdf-cli
     restart: "no"
+    env_file:
+      - .env
     environment:
-      - APP_MODE=cli
-      - BASE_DIR=/app
+      - APP_MODE=${APP_MODE:-cli}
+      - BASE_DIR=${BASE_DIR:-/app}
     volumes:
       - ./html-drop:/app/html-drop
       - ./pdf-export:/app/pdf-export
       - ./processing:/app/processing
       - ./done-html:/app/done-html
+      - ./scripts:/app/scripts
+      - ./src-backend:/app/src-backend
     tty: true
     stdin_open: true
 
