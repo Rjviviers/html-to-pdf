@@ -39,7 +39,7 @@ class HTMLToPDFConverter:
         # document margins/sizes are respected while ensuring content doesn't sit under
         # fixed headers/footers.
         self._safety_css = (
-            """
+            ""
             /* Injected to prevent overlap of fixed headers/footers with page content */
             html, body { margin: 0; }
             body {
@@ -61,7 +61,7 @@ class HTMLToPDFConverter:
             /* Smart table pagination - preserve all data with natural breaks */
             table {
               page-break-inside: auto;
-              width: 100%;
+              width: 100%%;
               margin-bottom: 10mm;
               border-collapse: collapse;
             }
@@ -101,7 +101,7 @@ class HTMLToPDFConverter:
             table[border], table[border] td, table[border] th {
               border-color: #000 !important;
             }
-            """
+            "
             % {"header_mm": header_space_mm, "footer_mm": footer_space_mm}
         )
 
