@@ -58,31 +58,48 @@ class HTMLToPDFConverter:
             /* Keep content from slipping behind fixed elements near page edges */
             main { margin: 0; }
 
-            /* Table page break rules - prevent breaking inside rows, add breaks for long tables */
+            /* Smart table pagination - preserve all data with natural breaks */
             table {
               page-break-inside: auto;
+              width: 100%;
+              margin-bottom: 10mm;
+              border-collapse: collapse;
             }
+
+            /* Keep rows intact - no mid-row breaks */
             tr {
               page-break-inside: avoid;
               page-break-after: auto;
             }
+
+            /* Repeat table headers on each page */
             thead {
               display: table-header-group;
             }
+
             tfoot {
               display: table-footer-group;
             }
-            /* Add page break after every 5th row in tables */
-            tr:nth-child(5n) {
-              page-break-after: always;
-            }
-            /* Don't break immediately after table headers */
+
+            /* Prevent breaking right after headers */
             thead tr {
               page-break-after: avoid;
             }
-            /* Ensure first row after header doesn't break */
+
+            /* Keep first data row with header */
             tbody tr:first-child {
               page-break-before: avoid;
+            }
+
+            /* Table readability enhancements */
+            td, th {
+              page-break-inside: avoid;
+              padding: 3px 6px;
+            }
+
+            /* Ensure table borders are visible in PDF */
+            table[border], table[border] td, table[border] th {
+              border-color: #000 !important;
             }
             """
             % {"header_mm": header_space_mm, "footer_mm": footer_space_mm}
