@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class HTMLToPDFConverter:
     """Handles conversion of HTML files to PDF with bookmarks."""
-    
+
     def __init__(self):
         """Initialize the converter with font configuration."""
         self.font_config = FontConfiguration()
@@ -31,9 +31,9 @@ class HTMLToPDFConverter:
         except ValueError:
             header_space_mm = 18.0
         try:
-            footer_space_mm = float(os.getenv('FOOTER_SPACE_MM', '16'))
+            footer_space_mm = float(os.getenv('FOOTER_SPACE_MM', '25'))
         except ValueError:
-            footer_space_mm = 16.0
+            footer_space_mm = 25.0
         self._disable_safe_header_footer = os.getenv('DISABLE_SAFE_HEADER_FOOTER') is not None
         # Note: we avoid overriding @page margins; we rely on body padding so existing
         # document margins/sizes are respected while ensuring content doesn't sit under
@@ -60,15 +60,15 @@ class HTMLToPDFConverter:
             """
             % {"header_mm": header_space_mm, "footer_mm": footer_space_mm}
         )
-    
+
     def convert_file(self, input_path: str, output_path: str) -> Dict[str, Any]:
         """
         Convert a single HTML file to PDF.
-        
+
         Args:
             input_path: Path to the input HTML file
             output_path: Path for the output PDF file
-            
+
         Returns:
             Dictionary with conversion result information
         """
@@ -76,18 +76,18 @@ class HTMLToPDFConverter:
             # Validate input file exists
             if not os.path.exists(input_path):
                 raise FileNotFoundError(f"Input file not found: {input_path}")
-            
+
             # Create output directory if it doesn't exist
             output_dir = os.path.dirname(output_path)
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
-            
+
             # Convert HTML to PDF with WeasyPrint
             logger.info(f"Converting {input_path} to {output_path}")
-            
+
             # Load HTML document
             html_doc = HTML(filename=input_path)
-            
+
             # Generate PDF with automatic bookmarks from headings
             # WeasyPrint automatically creates bookmarks from h1-h6 elements
             extra_stylesheets = None if self._disable_safe_header_footer else [CSS(string=self._safety_css)]
@@ -96,7 +96,7 @@ class HTMLToPDFConverter:
                 optimize_images=True,  # Optimize images for better performance
                 stylesheets=extra_stylesheets
             )
-            
+
             # Write PDF to file
             with open(output_path, 'wb') as pdf_file:
                 pdf_file.write(pdf_bytes)
@@ -120,11 +120,11 @@ class HTMLToPDFConverter:
                         )
             except Exception as collapse_err:
                 logger.warning(f"Bookmark collapse skipped: {collapse_err}")
-            
+
             # Get file sizes for reporting
             input_size = os.path.getsize(input_path)
             output_size = os.path.getsize(output_path)
-            
+
             result = {
                 'status': 'success',
                 'input_file': input_path,
@@ -133,14 +133,14 @@ class HTMLToPDFConverter:
                 'output_size': output_size,
                 'message': f'Successfully converted {os.path.basename(input_path)}'
             }
-            
+
             logger.info(f"Conversion successful: {input_path} -> {output_path}")
             return result
-            
+
         except Exception as e:
             error_msg = f"Failed to convert {input_path}: {str(e)}"
             logger.error(error_msg)
-            
+
             return {
                 'status': 'error',
                 'input_file': input_path,
@@ -190,29 +190,29 @@ class HTMLToPDFConverter:
 
         with open(pdf_path, 'wb') as out_f:
             writer.write(out_f)
-    
+
     def validate_html_file(self, file_path: str) -> bool:
         """
         Validate if a file is a valid HTML file.
-        
+
         Args:
             file_path: Path to the file to validate
-            
+
         Returns:
             True if file is valid HTML, False otherwise
         """
         try:
             if not os.path.exists(file_path):
                 return False
-            
+
             # Check file extension
             if not file_path.lower().endswith(('.html', '.htm')):
                 return False
-            
+
             # Try to load with WeasyPrint to validate
             HTML(filename=file_path)
             return True
-            
+
         except Exception as e:
             logger.warning(f"Invalid HTML file {file_path}: {e}")
             return False
@@ -221,10 +221,10 @@ class HTMLToPDFConverter:
 def convert_single_file(args: tuple) -> Dict[str, Any]:
     """
     Worker function for multiprocessing conversion.
-    
+
     Args:
         args: Tuple containing (input_path, output_path)
-        
+
     Returns:
         Conversion result dictionary
     """
@@ -236,11 +236,11 @@ def convert_single_file(args: tuple) -> Dict[str, Any]:
 if __name__ == "__main__":
     # Test the converter
     converter = HTMLToPDFConverter()
-    
+
     # Example usage
     test_input = "test.html"
     test_output = "test.pdf"
-    
+
     if os.path.exists(test_input):
         result = converter.convert_file(test_input, test_output)
         print(f"Conversion result: {result}")
