@@ -43,8 +43,8 @@ class HTMLToPDFConverter:
             /* Injected to prevent overlap of fixed headers/footers with page content */
             html, body { margin: 0; }
             body {
-              padding-top: %(header_mm).3fmm;
-              padding-bottom: %(footer_mm).3fmm;
+              padding-top: %(header_mm)smm;
+              padding-bottom: %(footer_mm)smm;
             }
             /* Common header/footer selectors pinned to page edges */
             header, .header, #header, .page-header, #page-header {
