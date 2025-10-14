@@ -27,13 +27,13 @@ class HTMLToPDFConverter:
         # Reserve space so any fixed-position headers/footers in HTML won't cover content
         # Can be tuned via env vars HEADER_SPACE_MM / FOOTER_SPACE_MM, or disabled with DISABLE_SAFE_HEADER_FOOTER
         try:
-            header_space_mm = float(os.getenv('HEADER_SPACE_MM', '18'))
+            header_space_mm = float(os.getenv('HEADER_SPACE_MM', '35'))
         except ValueError:
-            header_space_mm = 18.0
+            header_space_mm = 35.0
         try:
-            footer_space_mm = float(os.getenv('FOOTER_SPACE_MM', '25'))
+            footer_space_mm = float(os.getenv('FOOTER_SPACE_MM', '35'))
         except ValueError:
-            footer_space_mm = 25.0
+            footer_space_mm = 35.0
         self._disable_safe_header_footer = os.getenv('DISABLE_SAFE_HEADER_FOOTER') is not None
         # Note: we avoid overriding @page margins; we rely on body padding so existing
         # document margins/sizes are respected while ensuring content doesn't sit under
@@ -57,6 +57,33 @@ class HTMLToPDFConverter:
             }
             /* Keep content from slipping behind fixed elements near page edges */
             main { margin: 0; }
+
+            /* Table page break rules - prevent breaking inside rows, add breaks for long tables */
+            table {
+              page-break-inside: auto;
+            }
+            tr {
+              page-break-inside: avoid;
+              page-break-after: auto;
+            }
+            thead {
+              display: table-header-group;
+            }
+            tfoot {
+              display: table-footer-group;
+            }
+            /* Add page break after every 5th row in tables */
+            tr:nth-child(5n) {
+              page-break-after: always;
+            }
+            /* Don't break immediately after table headers */
+            thead tr {
+              page-break-after: avoid;
+            }
+            /* Ensure first row after header doesn't break */
+            tbody tr:first-child {
+              page-break-before: avoid;
+            }
             """
             % {"header_mm": header_space_mm, "footer_mm": footer_space_mm}
         )
