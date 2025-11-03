@@ -14,7 +14,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject, NumberObject
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 

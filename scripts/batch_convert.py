@@ -14,6 +14,7 @@ import errno
 import sys
 from pathlib import Path
 from typing import Optional, Tuple
+from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -186,11 +187,14 @@ def run_batch_convert(base_dir: Optional[Path | str] = None) -> dict:
             "html_drop_listing": listing,
         }
 
-    for src_html_path in html_files:
+    for src_html_path in tqdm(html_files, desc="Converting HTML files", unit="file"):
         processing_path = _atomic_acquire_html(src_html_path, processing_dir, html_dir)
         if processing_path is None:
             continue
         acquired += 1
+
+        # Update progress bar with current file name
+        tqdm.write(f"Processing: {src_html_path.relative_to(html_dir)}")
 
         # Preserve folder structure: calculate relative path from processing_dir and create corresponding output path
         relative_path = processing_path.relative_to(processing_dir)
