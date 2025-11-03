@@ -5,6 +5,9 @@ Handles individual file conversion with automatic bookmark generation.
 
 import os
 import logging
+import warnings
+import sys
+import contextlib
 from pathlib import Path
 from typing import Dict, Any, Optional
 import weasyprint
@@ -13,9 +16,27 @@ from weasyprint.text.fonts import FontConfiguration
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject, NumberObject
 
-# Configure logging
+# Configure logging and suppress warnings
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
+
+# Suppress WeasyPrint warnings specifically
+logging.getLogger('weasyprint').setLevel(logging.ERROR)
+
+# Suppress all Python warnings
+warnings.filterwarnings('ignore')
+
+# Context manager to suppress stderr output during PDF generation
+@contextlib.contextmanager
+def suppress_stderr():
+    """Suppress stderr output temporarily."""
+    with open(os.devnull, 'w') as devnull:
+        old_stderr = sys.stderr
+        sys.stderr = devnull
+        try:
+            yield
+        finally:
+            sys.stderr = old_stderr
 
 
 class HTMLToPDFConverter:
@@ -135,11 +156,12 @@ class HTMLToPDFConverter:
             # Generate PDF with automatic bookmarks from headings
             # WeasyPrint automatically creates bookmarks from h1-h6 elements
             extra_stylesheets = None if self._disable_safe_header_footer else [CSS(string=self._safety_css)]
-            pdf_bytes = html_doc.write_pdf(
-                font_config=self.font_config,
-                optimize_images=True,  # Optimize images for better performance
-                stylesheets=extra_stylesheets
-            )
+            with suppress_stderr():
+                pdf_bytes = html_doc.write_pdf(
+                    font_config=self.font_config,
+                    optimize_images=True,  # Optimize images for better performance
+                    stylesheets=extra_stylesheets
+                )
 
             # Write PDF to file
             with open(output_path, 'wb') as pdf_file:
