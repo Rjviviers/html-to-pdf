@@ -30,13 +30,18 @@ def _layout(base_dir: Path) -> Tuple[Path, Path, Path, Path]:
     return html_dir, out_dir, processing_dir, done_dir
 
 
-def _atomic_acquire_html(src_html_path: Path, processing_dir: Path) -> Optional[Path]:
+def _atomic_acquire_html(src_html_path: Path, processing_dir: Path, html_dir: Path) -> Optional[Path]:
     """
     Try to atomically move an HTML file from html-drop/ to processing/ to acquire it
     for this worker instance. Returns the new processing path on success, or None if
     the file could not be acquired (e.g., another process acquired it first).
+    Now preserves folder structure.
     """
-    processing_path = processing_dir / src_html_path.name
+    # Preserve folder structure in processing directory
+    relative_path = src_html_path.relative_to(html_dir)
+    processing_path = processing_dir / relative_path
+    # Ensure parent directories exist in processing
+    processing_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         # os.rename is atomic on same filesystem
         os.rename(src_html_path, processing_path)
@@ -51,6 +56,7 @@ def _atomic_acquire_html(src_html_path: Path, processing_dir: Path) -> Optional[
         # Cross-device link? Fall back to shutil.move (copy+delete)
         if getattr(e, 'errno', None) in (errno.EXDEV,):
             try:
+                processing_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(src_html_path), str(processing_path))
                 return processing_path
             except Exception:
@@ -59,9 +65,13 @@ def _atomic_acquire_html(src_html_path: Path, processing_dir: Path) -> Optional[
         return None
 
 
-def _finalize_html_after_success(processing_path: Path, done_dir: Path) -> None:
+def _finalize_html_after_success(processing_path: Path, done_dir: Path, processing_dir: Path) -> None:
     """Move processed HTML from processing/ to done-html/, avoiding duplicates."""
-    destination = done_dir / processing_path.name
+    # Preserve folder structure in done-html
+    relative_path = processing_path.relative_to(processing_dir)
+    destination = done_dir / relative_path
+    # Ensure parent directories exist in done-html
+    destination.parent.mkdir(parents=True, exist_ok=True)
     try:
         if destination.exists():
             # If already archived as done, remove the processing copy
@@ -90,19 +100,25 @@ def _finalize_html_after_success(processing_path: Path, done_dir: Path) -> None:
                 processing_path.unlink(missing_ok=True)
 
 
-def _requeue_html_after_failure(processing_path: Path, html_dir: Path) -> None:
+def _requeue_html_after_failure(processing_path: Path, html_dir: Path, processing_dir: Path) -> None:
     """On failure, move HTML back to html-drop/ for retry. Avoid overwriting."""
     if not processing_path.exists():
         return
-    destination = html_dir / processing_path.name
+    # Preserve folder structure when moving back to html-drop
+    relative_path = processing_path.relative_to(processing_dir)
+    destination = html_dir / relative_path
+    # Ensure parent directories exist in html-drop
+    destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
-        # If original name is taken, append a suffix to retry later
-        destination = destination.with_name(destination.stem + "__retry" + destination.suffix)
+        # If original path is taken, append a suffix to the filename for retry later
+        retry_name = destination.stem + "__retry" + destination.suffix
+        destination = destination.with_name(retry_name)
     try:
         os.rename(processing_path, destination)
     except OSError as e:
         if getattr(e, 'errno', None) in (errno.EXDEV,):
             try:
+                destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(processing_path), str(destination))
                 return
             except Exception:
@@ -141,11 +157,11 @@ def run_batch_convert(base_dir: Optional[Path | str] = None) -> dict:
     processing_dir.mkdir(parents=True, exist_ok=True)
     done_dir.mkdir(parents=True, exist_ok=True)
 
-    # Gather HTML files (case-insensitive, .html and .htm)
+    # Gather HTML files recursively (case-insensitive, .html and .htm)
     patterns = ['*.html', '*.htm', '*.HTML', '*.HTM']
     html_files = []
     for pat in patterns:
-        html_files.extend([p for p in html_dir.glob(pat)])
+        html_files.extend([p for p in html_dir.rglob(pat)])
     html_files = sorted({p.resolve() for p in html_files})
     converter = HTMLToPDFConverter()
     successes = 0
@@ -171,14 +187,16 @@ def run_batch_convert(base_dir: Optional[Path | str] = None) -> dict:
         }
 
     for src_html_path in html_files:
-        processing_path = _atomic_acquire_html(src_html_path, processing_dir)
+        processing_path = _atomic_acquire_html(src_html_path, processing_dir, html_dir)
         if processing_path is None:
             continue
         acquired += 1
 
-        out_path = out_dir / (processing_path.stem + '.pdf')
+        # Preserve folder structure: calculate relative path from processing_dir and create corresponding output path
+        relative_path = processing_path.relative_to(processing_dir)
+        out_path = out_dir / relative_path.with_suffix('.pdf')
         if out_path.exists():
-            _finalize_html_after_success(processing_path, done_dir)
+            _finalize_html_after_success(processing_path, done_dir, processing_dir)
             successes += 1
             skipped_existing += 1
             continue
@@ -187,13 +205,13 @@ def run_batch_convert(base_dir: Optional[Path | str] = None) -> dict:
             result = converter.convert_file(str(processing_path), str(out_path))
             if result.get('status') == 'success':
                 successes += 1
-                _finalize_html_after_success(processing_path, done_dir)
+                _finalize_html_after_success(processing_path, done_dir, processing_dir)
             else:
                 failures += 1
-                _requeue_html_after_failure(processing_path, html_dir)
+                _requeue_html_after_failure(processing_path, html_dir, processing_dir)
         except Exception:
             failures += 1
-            _requeue_html_after_failure(processing_path, html_dir)
+            _requeue_html_after_failure(processing_path, html_dir, processing_dir)
 
     return {
         "status": "ok" if failures == 0 else "partial",
