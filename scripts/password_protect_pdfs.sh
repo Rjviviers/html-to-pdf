@@ -88,10 +88,14 @@ if [[ -z "$PASSWORD" ]]; then
 fi
 
 shopt -s nullglob
-PDFS=("$DIR"/*.pdf)
+# Recursively find all PDF files in subdirectories, similar to how the converter handles HTML files
+PDFS=()
+while IFS= read -r -d '' file; do
+  PDFS+=("$file")
+done < <(find "$DIR" -type f \( -iname '*.pdf' \) -print0)
 
 total=${#PDFS[@]}
-log "Found $total PDF(s) in $DIR"
+log "Found $total PDF(s) in $DIR and subdirectories"
 
 encrypted=0
 copied=0
@@ -102,10 +106,17 @@ use_aes256=true
 qpdf --help >/dev/null 2>&1 || { echo "qpdf is required." >&2; exit 3; }
 
 for src in "${PDFS[@]}"; do
+  # Calculate relative path from input directory to preserve folder structure
+  relative_path="${src#$DIR/}"
+  dest="$OUT_DIR/$relative_path"
+
+  # Create output directory structure if needed
+  dest_dir="$(dirname "$dest")"
+  mkdir -p "$dest_dir"
+
   base="$(basename "$src")"
-  dest="$OUT_DIR/$base"
   vlog "-----"
-  log "Processing: $base"
+  log "Processing: $relative_path"
   if [[ -e "$dest" ]]; then
     log "[skip] exists: $base"
     skipped=$((skipped+1))
