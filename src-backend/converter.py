@@ -52,9 +52,9 @@ class HTMLToPDFConverter:
         except ValueError:
             header_space_mm = 35.0
         try:
-            footer_space_mm = float(os.getenv('FOOTER_SPACE_MM', '35'))
+            footer_space_mm = float(os.getenv('FOOTER_SPACE_MM', '50'))
         except ValueError:
-            footer_space_mm = 35.0
+            footer_space_mm = 50.0
         self._disable_safe_header_footer = os.getenv('DISABLE_SAFE_HEADER_FOOTER') is not None
         # Note: we avoid overriding @page margins; we rely on body padding so existing
         # document margins/sizes are respected while ensuring content doesn't sit under
