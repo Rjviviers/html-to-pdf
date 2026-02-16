@@ -74,8 +74,6 @@ class HTMLToPDFConverter:
             body {
               /* Prevent overflow:hidden from cutting off content in PDFs */
               overflow: visible !important;
-              height: auto !important;
-              min-height: 100%%;
             }
             /* Common header/footer selectors pinned to page edges */
             header, .header, #header, .page-header, #page-header {
