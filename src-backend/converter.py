@@ -62,19 +62,33 @@ class HTMLToPDFConverter:
               margin-bottom: %(footer_mm)smm;
             }
 
-            /* Injected to prevent layout breaking or content hiding */
+            /* Injected to prevent layout breaking, horizontal overflow, or alternating blank pages */
             html, body { 
               margin: 0; 
               padding: 0;
               box-sizing: border-box !important;
+              max-width: 100%% !important;
+              overflow-x: hidden !important;
             }
             *, *:before, *:after {
               box-sizing: inherit !important;
             }
             body {
-              /* Prevent overflow:hidden from cutting off content in PDFs */
-              overflow: visible !important;
+              /* Prevent overflow:hidden from cutting off content in PDFs vertically */
+              overflow-y: visible !important;
             }
+
+            /* 
+               Forcefully neutralize breaks that cause blank pages for odd/even alignment 
+               (e.g., break-before: right/left) 
+            */
+            * {
+              break-before: auto !important;
+              break-after: auto !important;
+              page-break-before: auto !important;
+              page-break-after: auto !important;
+            }
+
             /* Common header/footer selectors pinned to page edges */
             header, .header, #header, .page-header, #page-header {
               position: fixed;
