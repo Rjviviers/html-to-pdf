@@ -79,14 +79,22 @@ class HTMLToPDFConverter:
             }
 
             /* 
-               Forcefully neutralize breaks that cause blank pages for odd/even alignment 
-               (e.g., break-before: right/left) 
+               Neutralize alignment breaks that cause blank pages for odd/even chapters 
+               (e.g., break-before: right/left) but allow intentional page breaks 
+               (like for cover pages) to function.
             */
             * {
-              break-before: auto !important;
-              break-after: auto !important;
+              break-before: avoid-column !important; /* Neutralize right/left indirectly */
+              break-after: auto; /* Allow the user's explicit breaks to work here */
               page-break-before: auto !important;
-              page-break-after: auto !important;
+            }
+            
+            /* Specifically allow standard page breaks to function for the cover page rule */
+            [style*="page-break-after: always"], 
+            [style*="break-after: page"],
+            .page-break, .cover-page {
+              break-after: page !important;
+              page-break-after: always !important;
             }
 
             /* Common header/footer selectors pinned to page edges */
