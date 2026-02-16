@@ -20,23 +20,18 @@ from pypdf.generic import NameObject, NumberObject
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
-# Suppress WeasyPrint warnings specifically
-logging.getLogger('weasyprint').setLevel(logging.ERROR)
-
-# Suppress all Python warnings
+# Suppress all Python warnings (except for our targeted logging)
 warnings.filterwarnings('ignore')
 
-# Context manager to suppress stderr output during PDF generation
-@contextlib.contextmanager
-def suppress_stderr():
-    """Suppress stderr output temporarily."""
-    with open(os.devnull, 'w') as devnull:
-        old_stderr = sys.stderr
-        sys.stderr = devnull
-        try:
-            yield
-        finally:
-            sys.stderr = old_stderr
+# Configure WeasyPrint logging to be more helpful
+wp_logger = logging.getLogger('weasyprint')
+wp_logger.setLevel(logging.WARNING)  # Show warnings about CSS/images
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter('%(name)s - %(levelname)s - %(message)s'))
+wp_logger.addHandler(handler)
+wp_logger.propagate = False
+
+# suppress_stderr removed as it hides critical WeasyPrint rendering messages
 
 
 class HTMLToPDFConverter:
@@ -62,19 +57,31 @@ class HTMLToPDFConverter:
         self._safety_css = (
             """
             /* Injected to prevent overlap of fixed headers/footers with page content */
-            html, body { margin: 0; }
+            html, body { 
+              margin: 0; 
+              box-sizing: border-box !important;
+            }
+            *, *:before, *:after {
+              box-sizing: inherit !important;
+            }
             body {
               padding-top: %(header_mm)smm;
               padding-bottom: %(footer_mm)smm;
+              /* Prevent overflow:hidden from cutting off content in PDFs */
+              overflow: visible !important;
+              height: auto !important;
+              min-height: 100%%;
             }
             /* Common header/footer selectors pinned to page edges */
             header, .header, #header, .page-header, #page-header {
               position: fixed;
               top: 0; left: 0; right: 0;
+              height: auto;
             }
             footer, .footer, #footer, .page-footer, #page-footer {
               position: fixed;
               bottom: 0; left: 0; right: 0;
+              height: auto;
             }
             /* Keep content from slipping behind fixed elements near page edges */
             main { margin: 0; }
@@ -151,17 +158,17 @@ class HTMLToPDFConverter:
             logger.info(f"Converting {input_path} to {output_path}")
 
             # Load HTML document
-            html_doc = HTML(filename=input_path)
+            # Base_url allows relative assets if they exist relative to the file
+            html_doc = HTML(filename=input_path, base_url=os.path.dirname(input_path))
 
             # Generate PDF with automatic bookmarks from headings
             # WeasyPrint automatically creates bookmarks from h1-h6 elements
             extra_stylesheets = None if self._disable_safe_header_footer else [CSS(string=self._safety_css)]
-            with suppress_stderr():
-                pdf_bytes = html_doc.write_pdf(
-                    font_config=self.font_config,
-                    optimize_images=True,  # Optimize images for better performance
-                    stylesheets=extra_stylesheets
-                )
+            pdf_bytes = html_doc.write_pdf(
+                font_config=self.font_config,
+                optimize_images=True,  # Optimize images for better performance
+                stylesheets=extra_stylesheets
+            )
 
             # Write PDF to file
             with open(output_path, 'wb') as pdf_file:

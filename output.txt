@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/home/ruan/Documents/nukleus/Helpers/html-to-pdf/reproduce_issue.py", line 8, in <module>
+    from converter import HTMLToPDFConverter
+  File "/home/ruan/Documents/nukleus/Helpers/html-to-pdf/src-backend/converter.py", line 13, in <module>
+    import weasyprint
+ModuleNotFoundError: No module named 'weasyprint'
