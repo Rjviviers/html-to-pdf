@@ -56,17 +56,22 @@ class HTMLToPDFConverter:
         # fixed headers/footers.
         self._safety_css = (
             """
-            /* Injected to prevent overlap of fixed headers/footers with page content */
+            /* Use @page margins to reserve space for fixed headers/footers on EVERY page */
+            @page {
+              margin-top: %(header_mm)smm;
+              margin-bottom: %(footer_mm)smm;
+            }
+
+            /* Injected to prevent layout breaking or content hiding */
             html, body { 
               margin: 0; 
+              padding: 0;
               box-sizing: border-box !important;
             }
             *, *:before, *:after {
               box-sizing: inherit !important;
             }
             body {
-              padding-top: %(header_mm)smm;
-              padding-bottom: %(footer_mm)smm;
               /* Prevent overflow:hidden from cutting off content in PDFs */
               overflow: visible !important;
               height: auto !important;
@@ -85,45 +90,6 @@ class HTMLToPDFConverter:
             }
             /* Keep content from slipping behind fixed elements near page edges */
             main { margin: 0; }
-
-            /* Smart table pagination - preserve all data with natural breaks */
-            table {
-              page-break-inside: auto;
-              width: 100%%;
-              margin-bottom: 10mm;
-              border-collapse: collapse;
-            }
-
-            /* Keep rows intact - no mid-row breaks */
-            tr {
-              page-break-inside: avoid;
-              page-break-after: auto;
-            }
-
-            /* Repeat table headers on each page */
-            thead {
-              display: table-header-group;
-            }
-
-            tfoot {
-              display: table-footer-group;
-            }
-
-            /* Prevent breaking right after headers */
-            thead tr {
-              page-break-after: avoid;
-            }
-
-            /* Keep first data row with header */
-            tbody tr:first-child {
-              page-break-before: avoid;
-            }
-
-            /* Table readability enhancements */
-            td, th {
-              page-break-inside: avoid;
-              padding: 3px 6px;
-            }
 
             /* Ensure table borders are visible in PDF */
             table[border], table[border] td, table[border] th {
