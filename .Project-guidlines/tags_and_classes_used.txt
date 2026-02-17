@@ -1,0 +1,36 @@
+css classes : 
+bookmark-nav
+header-section
+header-table
+label
+label-default
+main-content
+page-break
+section-anchor
+
+html tags : 
+a
+body
+div
+h1
+h2
+h3
+head
+hr
+html
+i
+meta
+p
+script
+small
+span
+strong
+style
+table
+tbody
+td
+th
+thead
+title
+tr
+ul

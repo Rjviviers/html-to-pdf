@@ -25,7 +25,7 @@ warnings.filterwarnings('ignore')
 
 # Configure WeasyPrint logging to be more helpful
 wp_logger = logging.getLogger('weasyprint')
-wp_logger.setLevel(logging.WARNING)  # Show warnings about CSS/images
+wp_logger.setLevel(logging.ERROR)  # Show warnings about CSS/images
 handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(logging.Formatter('%(name)s - %(levelname)s - %(message)s'))
 wp_logger.addHandler(handler)
@@ -51,70 +51,35 @@ class HTMLToPDFConverter:
         except ValueError:
             footer_space_mm = 50.0
         self._disable_safe_header_footer = os.getenv('DISABLE_SAFE_HEADER_FOOTER') is not None
+        
+        # Path to global CSS file
+        self.global_css_path = Path(__file__).parent / "assets" / "global.css"
+        self._global_css = None
+        if self.global_css_path.exists():
+            try:
+                self._global_css = CSS(filename=str(self.global_css_path))
+                logger.info(f"Loaded global CSS from {self.global_css_path}")
+            except Exception as e:
+                logger.error(f"Failed to load global CSS: {e}")
+
         # Note: we avoid overriding @page margins; we rely on body padding so existing
         # document margins/sizes are respected while ensuring content doesn't sit under
         # fixed headers/footers.
         self._safety_css = (
             """
-            /* Use @page margins to reserve space for fixed headers/footers on EVERY page */
-            @page {
-              margin-top: %(header_mm)smm;
-              margin-bottom: %(footer_mm)smm;
-            }
 
-            /* Injected to prevent layout breaking, horizontal overflow, or alternating blank pages */
-            html, body { 
-              margin: 0; 
-              padding: 0;
-              box-sizing: border-box !important;
-              max-width: 100%% !important;
-              overflow-x: hidden !important;
-            }
-            *, *:before, *:after {
-              box-sizing: inherit !important;
-            }
             body {
-              /* Prevent overflow:hidden from cutting off content in PDFs vertically */
-              overflow-y: visible !important;
+                margin-top: %(header_mm)smm;
+                margin-bottom: %(footer_mm)smm;
             }
-
-            /* 
-               Neutralize alignment breaks that cause blank pages for odd/even chapters 
-               (e.g., break-before: right/left) but allow intentional page breaks 
-               (like for cover pages) to function.
-            */
-            * {
-              break-before: avoid-column !important; /* Neutralize right/left indirectly */
-              break-after: auto; /* Allow the user's explicit breaks to work here */
-              page-break-before: auto !important;
+            .page-break {
+                margin-top: 5px;
+                margin-bottom: 0px;
+                page-break-before: after;
             }
             
-            /* Specifically allow standard page breaks to function for the cover page rule */
-            [style*="page-break-after: always"], 
-            [style*="break-after: page"],
-            .page-break, .cover-page {
-              break-after: page !important;
-              page-break-after: always !important;
-            }
 
-            /* Common header/footer selectors pinned to page edges */
-            header, .header, #header, .page-header, #page-header {
-              position: fixed;
-              top: 0; left: 0; right: 0;
-              height: auto;
-            }
-            footer, .footer, #footer, .page-footer, #page-footer {
-              position: fixed;
-              bottom: 0; left: 0; right: 0;
-              height: auto;
-            }
-            /* Keep content from slipping behind fixed elements near page edges */
-            main { margin: 0; }
-
-            /* Ensure table borders are visible in PDF */
-            table[border], table[border] td, table[border] th {
-              border-color: #000 !important;
-            }
+            
             """
             % {"header_mm": header_space_mm, "footer_mm": footer_space_mm}
         )
@@ -149,7 +114,14 @@ class HTMLToPDFConverter:
 
             # Generate PDF with automatic bookmarks from headings
             # WeasyPrint automatically creates bookmarks from h1-h6 elements
-            extra_stylesheets = None if self._disable_safe_header_footer else [CSS(string=self._safety_css)]
+            extra_stylesheets = []
+            if not self._disable_safe_header_footer:
+                extra_stylesheets.append(CSS(string=self._safety_css))
+            
+            # Add global CSS if it exists
+            if self._global_css:
+                extra_stylesheets.append(self._global_css)
+
             pdf_bytes = html_doc.write_pdf(
                 font_config=self.font_config,
                 optimize_images=True,  # Optimize images for better performance
