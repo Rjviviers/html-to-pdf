@@ -69,12 +69,13 @@ class HTMLToPDFConverter:
             """
 
             body {
-                margin-top: %(header_mm)smm;
-                margin-bottom: %(footer_mm)smm;
+                margin-top: 0mm;
+                margin-bottom: 50mm;
             }
+
             .page-break {
                 margin-top: 5px;
-                margin-bottom: 0px;
+                margin-bottom: 50px;
                 page-break-before: after;
             }
             
