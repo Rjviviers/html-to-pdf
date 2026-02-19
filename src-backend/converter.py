@@ -62,22 +62,11 @@ class HTMLToPDFConverter:
             except Exception as e:
                 logger.error(f"Failed to load global CSS: {e}")
 
-        # Note: we avoid overriding @page margins; we rely on body padding so existing
-        # document margins/sizes are respected while ensuring content doesn't sit under
-        # fixed headers/footers.
+
         self._safety_css = (
             """
 
-            body {
-                margin-top: 0mm;
-                margin-bottom: 50mm;
-            }
-
-            .page-break {
-                margin-top: 5px;
-                margin-bottom: 50px;
-                page-break-before: after;
-            }
+            
             
 
             
@@ -125,7 +114,6 @@ class HTMLToPDFConverter:
 
             pdf_bytes = html_doc.write_pdf(
                 font_config=self.font_config,
-                optimize_images=True,  # Optimize images for better performance
                 stylesheets=extra_stylesheets
             )
 
@@ -230,7 +218,7 @@ class HTMLToPDFConverter:
         Args:
             file_path: Path to the file to validate
 
-        Returns:
+        Returns: /home/ruan/Documents/nukleus/Helpers/html-to-pdf/done-html
             True if file is valid HTML, False otherwise
         """
         try:
