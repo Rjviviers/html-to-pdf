@@ -68,13 +68,11 @@ def run_sync(base_dir: Path) -> None:
 
 
 def run_encrypt(dir_path: Path, out_dir: Path | None = None, password: str | None = None) -> int:
-    script = ROOT/"scripts"/"password_protect_pdfs.sh"
+    script = ROOT/"scripts"/"password_protect_pdfs.py"
     if not script.exists():
         print("Encryption script not found.")
         return 2
-    log_dir = Path(out_dir) if out_dir is not None else (dir_path / "encrypted")
-    log_file = log_dir / "encrypt.log"
-    cmd = ["bash", str(script), "--dir", str(dir_path), "--verbose", "--log-file", str(log_file)]
+    cmd = [sys.executable, str(script), "--dir", str(dir_path)]
     if out_dir is not None:
         cmd += ["--out-dir", str(out_dir)]
     if password:
@@ -83,8 +81,11 @@ def run_encrypt(dir_path: Path, out_dir: Path | None = None, password: str | Non
         subprocess.check_call(cmd)
         return 0
     except subprocess.CalledProcessError as e:
-        print(f"Encryption failed with exit code {e.returncode}. See log: {log_file}")
+        print(f"Encryption failed with exit code {e.returncode}.")
         return e.returncode
+    except Exception as e:
+        print(f"Encryption failed: {e}")
+        return 1
 
 
 def main() -> int:

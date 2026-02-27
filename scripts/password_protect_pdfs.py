@@ -204,6 +204,7 @@ def main() -> int:
     parser.add_argument("--suffix", dest="suffix", default=".tmp", help="Temporary suffix to use while encrypting (default: .tmp)")
     parser.add_argument("--recursive", dest="recursive", action="store_true", help="Scan input directory recursively for PDFs")
     parser.add_argument("--workers", dest="workers", type=int, default=max(1, os.cpu_count() or 1), help="Number of parallel workers (default: CPU count)")
+    parser.add_argument("--password", dest="password", default=None, help="Use a specific password instead of generating one")
 
     args = parser.parse_args()
     target_dir = Path(args.directory).resolve()
@@ -211,8 +212,11 @@ def main() -> int:
         print(f"ERROR: Directory not found: {target_dir}")
         return 2
 
-    include_symbols = False if args.no_symbols else args.symbols
-    password = generate_password(length=args.length, include_symbols=include_symbols)
+    if args.password:
+        password = args.password
+    else:
+        include_symbols = False if args.no_symbols else args.symbols
+        password = generate_password(length=args.length, include_symbols=include_symbols)
 
     pdfs = list(find_pdfs(target_dir, recursive=args.recursive))
     if not pdfs and not args.recursive:
@@ -228,11 +232,15 @@ def main() -> int:
         password_file = Path(args.password_file).resolve()
 
     total = len(pdfs)
-    # Write password file at the start
-    write_password_file(password_file, password, target_dir, out_dir, total)
+    # Write password file at the start only if we generated a password
+    if not args.password:
+        write_password_file(password_file, password, target_dir, out_dir, total)
+        print(f"Password file: {password_file}", flush=True)
+    else:
+        print("Using provided password (hidden).", flush=True)
+
     print(f"Found {total} PDF(s) in {target_dir}{' (recursive)' if args.recursive else ''}.", flush=True)
     print(f"Output directory: {out_dir}", flush=True)
-    print(f"Password file: {password_file}", flush=True)
     print(f"Using {min(args.workers, max(1, total))} worker(s).\n", flush=True)
 
     processed = 0
